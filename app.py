@@ -166,7 +166,13 @@ def admin_download_signups():
         abort(401)
 
     if not SIGNUPS_CSV.exists():
-        abort(404, "No signups recorded yet.")
+        # Create an empty CSV with header so admins can download an empty file instead of 404.
+        try:
+            with SIGNUPS_CSV.open("w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["timestamp_utc", "id", "email", "name", "picture"])
+        except Exception as e:
+            abort(500, f"Failed to create signups file: {e}")
 
     # send_file will stream the file back as an attachment
     return send_file(
