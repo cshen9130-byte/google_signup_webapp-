@@ -5,6 +5,7 @@ import os
 import csv
 from datetime import datetime, timezone
 from pathlib import Path
+from flask import send_file, request, abort
 
 # Load environment variables from .env (if present)
 load_dotenv()
@@ -14,6 +15,9 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "supersekrit")
 
 # Path for signup CSV
 SIGNUPS_CSV = Path(__file__).parent / "signups.csv"
+
+# Admin token for downloading signups remotely. Set ADMIN_TOKEN in your host env (Render/Heroku).
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN")
 
 
 def record_signup(user_info: dict):
@@ -139,6 +143,38 @@ def logout():
     session.pop("signup_recorded", None)
     flash("You have been logged out.")
     return redirect(url_for("index"))
+
+
+@app.route("/admin/download-signups")
+def admin_download_signups():
+    """Download the signups CSV.
+
+    Protection: requires ADMIN_TOKEN env var to be set on the host. Provide the token
+    either as a query parameter `?token=...` or as an Authorization header `Bearer ...`.
+    """
+    if not ADMIN_TOKEN:
+        abort(403, "Admin download not configured on this host.")
+
+    # Accept token in query or Authorization header
+    token = request.args.get("token")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth.split(" ", 1)[1].strip()
+
+    if not token or token != ADMIN_TOKEN:
+        abort(401)
+
+    if not SIGNUPS_CSV.exists():
+        abort(404, "No signups recorded yet.")
+
+    # send_file will stream the file back as an attachment
+    return send_file(
+        SIGNUPS_CSV,
+        as_attachment=True,
+        download_name="signups.csv",
+        mimetype="text/csv",
+    )
 
 
 if __name__ == "__main__":
